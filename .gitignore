@@ -1,0 +1,14 @@
+# 原始 PDF 资料(187MB,本地保留;部署用不到,git 不适合管理大体积二进制文件)
+pdf/
+
+# 构建中间产物(页面渲染 PNG)
+_render/
+
+# 依赖与本地工具配置
+node_modules/
+.zcode/
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+~$*

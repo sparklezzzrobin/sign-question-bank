@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信号与系统 · 刷题掌握系统 ｜ 武大 807/936</title>
+<link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/app.css?v=23">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">∫</span>
+    <div class="brand-text">
+      <h1>信号与系统 · 刷题掌握系统</h1>
+      <p>武汉大学 807 / 936 · 2013–2026 真题</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="brush">✍️ 刷题</button>
+    <button class="tab" data-view="heat">🔥 掌握热力图</button>
+    <button class="tab" data-view="stats">📊 统计</button>
+  </nav>
+  <div class="top-actions">
+    <button id="lookBtn" class="icon-btn" title="切换外观风格" aria-label="切换外观风格">🎨</button>
+    <div class="look-menu" id="lookMenu" hidden>
+      <div class="look-sec">外观风格</div>
+      <button class="look-opt" data-look="claude"><span class="swatch" style="background:#faf9f5"></span>暖纸 · Claude 风<span class="sub">衬线 · 赤陶橙</span></button>
+      <button class="look-opt" data-look="modern"><span class="swatch" style="background:#f4f5f7"></span>冷灰 · 现代风<span class="sub">靛蓝 · 简洁</span></button>
+      <div class="look-sec">明暗</div>
+      <button class="look-opt" data-theme-opt="light"><span class="swatch" style="background:linear-gradient(90deg,#fff 50%,#262624 50%)"></span>明亮 / 暗色</button>
+    </div>
+    <button id="themeBtn" class="icon-btn" title="切换明亮 / 暗色" aria-label="切换主题">🌓</button>
+  </div>
+</header>
+
+<main>
+  <!-- ① 刷题视图 -->
+  <section id="view-brush" class="view active">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="side-resizer" id="sideResizer" title="拖拽调节宽度 · 双击复位"></div>
+    <div class="brush-main">
+      <div class="filterbar">
+        <div class="chips" id="statusChips"></div>
+        <select id="srcSel" class="sel" title="按来源筛选"></select>
+        <select id="yearSel" class="sel" title="按年份筛选"></select>
+        <input id="searchInput" class="search" type="search" placeholder="搜索标题 / 题干关键词…" spellcheck="false">
+        <span class="count" id="countText"></span>
+      </div>
+      <div class="masonry" id="cards"></div>
+    </div>
+  </section>
+
+  <!-- ② 热力图视图 -->
+  <section id="view-heat" class="view">
+    <div class="heat-head">
+      <div class="seg" id="heatModeSeg">
+        <button data-mode="matrix" class="active">年份 × 题号</button>
+        <button data-mode="flat">按专题平铺</button>
+        <button data-mode="all">全库 · 按专题</button>
+      </div>
+      <div class="legend" id="heatLegend"></div>
+    </div>
+    <div class="heat-wrap panel" id="heatWrap"></div>
+  </section>
+
+  <!-- ③ 统计视图 -->
+  <section id="view-stats" class="view">
+    <div class="stat-cards" id="statCards"></div>
+    <div class="panel">
+      <h2>各专题掌握进度</h2>
+      <div id="topicBars"></div>
+    </div>
+    <div class="panel">
+      <h2>刷题打卡 · 按日</h2>
+      <div id="punch"></div>
+    </div>
+    <div class="panel">
+      <h2>数据管理</h2>
+      <p class="hint">做题记录保存在本浏览器（localStorage）中。<b>导出备份</b>生成 JSON 文件，可在其他电脑上<b>导入</b>恢复；清除浏览器数据前请先导出。</p>
+      <div class="btn-row">
+        <button class="btn" id="exportBtn">⬇️ 导出备份</button>
+        <button class="btn" id="importBtn">⬆️ 导入备份</button>
+        <button class="btn danger" id="clearBtn">🗑️ 清空所有记录</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="lightbox" hidden><img alt="题目原图" id="lightboxImg"></div>
+
+<!-- AI 讲解抽屉 -->
+<aside id="aiPanel" hidden aria-label="AI 讲解">
+  <div class="ai-head">
+    <div class="ai-title">
+      <b>🤖 AI 讲解</b>
+      <span id="aiQTitle" title=""></span>
+    </div>
+    <div class="ai-actions">
+      <button id="aiSettingsBtn" class="ai-ib" title="API 设置（Key / 模型）">⚙️</button>
+      <button id="aiClearBtn" class="ai-ib" title="清空本题对话">🗑️</button>
+      <button id="aiCloseBtn" class="ai-ib" title="关闭（Esc）">✕</button>
+    </div>
+  </div>
+  <div class="ai-ctx" id="aiCtx"></div>
+  <div class="ai-msgs" id="aiMsgs"></div>
+  <div class="ai-composer">
+    <textarea id="aiInput" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button id="aiSendBtn" class="ai-send">发送</button>
+  </div>
+</aside>
+
+<!-- AI 设置弹窗 -->
+<div id="aiSettings" hidden>
+  <div class="ai-modal">
+    <h3>AI 设置 · DeepSeek</h3>
+    <label class="ai-field">API Base URL
+      <input id="aiBase" type="text" placeholder="https://api.deepseek.com" spellcheck="false">
+    </label>
+    <label class="ai-field">API Key
+      <input id="aiKey" type="password" placeholder="sk-…" spellcheck="false" autocomplete="off">
+    </label>
+    <label class="ai-field">模型
+      <select id="aiModel">
+        <option value="deepseek-flash">deepseek-flash（V4.1 Flash · 快，日常讲解，推荐）</option>
+        <option value="deepseek-v4-pro">deepseek-v4-pro（V4 Pro · 更强，难题深挖）</option>
+      </select>
+    </label>
+    <label class="ai-field ai-check">
+      <input id="aiThink" type="checkbox">
+      <span><b>深度思考</b>（V4 系默认开启：先推理再回答，更准但更慢；关掉适合快速问答）</span>
+    </label>
+    <label class="ai-field">输出方式
+      <select id="aiStreamSel">
+        <option value="stream">流式逐字输出（推荐）</option>
+        <option value="full">整段返回（若挂了代理导致流式收不到数据，选这个）</option>
+      </select>
+    </label>
+    <p class="hint">Key 只保存在本机浏览器（localStorage），请求由页面直连 <b>api.deepseek.com</b> 官方接口，不经过任何第三方。Key 在 <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> 申请。</p>
+    <div class="btn-row">
+      <button class="btn" id="aiSaveSettings" style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent)">保存</button>
+      <button class="btn" id="aiCancelSettings">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="data/questions.js?v=20"></script>
+<script src="assets/js/app.js?v=27"></script>
+</body>
+</html>

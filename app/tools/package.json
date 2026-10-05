@@ -1,0 +1,13 @@
+{
+  "name": "sign-question-bank-build",
+  "private": true,
+  "type": "module",
+  "description": "构建脚本依赖：把 专题刷题库/*.md 解析渲染为 app/data/questions.js（仅构建期使用）",
+  "scripts": {
+    "build": "node build-data.mjs"
+  },
+  "dependencies": {
+    "katex": "^0.16.11",
+    "marked": "^16.0.0"
+  }
+}
