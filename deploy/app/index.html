@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>信号与系统 · 刷题掌握系统 ｜ 武大 807/936</title>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
-<link rel="stylesheet" href="assets/css/app.css?v=23">
+<link rel="stylesheet" href="assets/css/app.css?v=24">
 </head>
 <body>
 
@@ -93,18 +93,21 @@
 
 <!-- AI 讲解抽屉 -->
 <aside id="aiPanel" hidden aria-label="AI 讲解">
+  <div class="ai-resizer" id="aiResizer" title="拖拽调整宽度 · 双击恢复默认"></div>
   <div class="ai-head">
     <div class="ai-title">
       <b>🤖 AI 讲解</b>
       <span id="aiQTitle" title=""></span>
     </div>
     <div class="ai-actions">
+      <button id="aiHistBtn" class="ai-ib" title="历史对话（所有题目的提问记录）">🕘</button>
       <button id="aiSettingsBtn" class="ai-ib" title="API 设置（Key / 模型）">⚙️</button>
       <button id="aiClearBtn" class="ai-ib" title="清空本题对话">🗑️</button>
       <button id="aiCloseBtn" class="ai-ib" title="关闭（Esc）">✕</button>
     </div>
   </div>
   <div class="ai-ctx" id="aiCtx"></div>
+  <div class="ai-history" id="aiHistory" hidden></div>
   <div class="ai-msgs" id="aiMsgs"></div>
   <div class="ai-composer">
     <textarea id="aiInput" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
@@ -148,7 +151,7 @@
 
 <div id="toast" hidden></div>
 
-<script src="data/questions.js?v=20"></script>
-<script src="assets/js/app.js?v=27"></script>
+<script src="data/questions.js?v=21"></script>
+<script src="assets/js/app.js?v=28"></script>
 </body>
 </html>

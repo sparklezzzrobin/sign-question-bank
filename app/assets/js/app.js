@@ -203,7 +203,10 @@ function cardHTML(q) {
   return `<article class="card ${st ? 'st-' + st : ''}" data-id="${q.id}">
     <div class="card-head">
       <div class="badges">${srcBadge}${yearBadge}${score}${topicBadge}</div>
-      <button class="ai-fab" data-act="ai" title="AI 讲解本题（已读取题干与解析）">🤖 AI</button>
+      <div class="head-actions">
+        <button class="fav-btn ${fav ? 'on' : ''}" data-act="fav" title="收藏" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
+        <button class="ai-fab" data-act="ai" title="AI 讲解本题（已读取题干与解析）">🤖 AI</button>
+      </div>
       <h3 class="card-title">${q.titleHtml}</h3>
     </div>
     <div class="card-stem">${q.stemHtml}</div>
@@ -214,7 +217,6 @@ function cardHTML(q) {
       <div class="seg-status" role="group" aria-label="掌握状态">
         ${STATUSES.map(s => `<button class="st-btn ${st === s.k ? 'on' : ''}" data-act="status" data-s="${s.k}" aria-pressed="${st === s.k}"><span class="dot"></span>${s.label}</button>`).join('')}
       </div>
-      <button class="fav-btn ${fav ? 'on' : ''}" data-act="fav" title="收藏" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
       <div class="pdf-btns">${pdfs}</div>
     </div>
   </article>`;
@@ -430,10 +432,6 @@ function renderPunch() {
   start.setDate(end.getDate() - (days - 1));
   const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
   let labels = '', cells = '';
-  const weekdayLabels = { 1: '一', 3: '三', 5: '五' };
-  for (let r = 0; r < 7; r++) {
-    labels += `<div class="hlabel" style="grid-column:1;grid-row:${r + 1}">${weekdayLabels[r] || ''}</div>`;
-  }
   // 月份轴在底部：标在包含每月 1 号的那一列正下方，与格子逐列对齐
   for (let w = 0; w < 53; w++) {
     let ml = '';
@@ -441,20 +439,20 @@ function renderPunch() {
       const d = new Date(start); d.setDate(start.getDate() + w * 7 + r);
       if (d.getDate() === 1) { ml = MONTHS[d.getMonth()]; break; }
     }
-    if (ml) labels += `<div class="hlabel bottom" style="grid-column:${w + 2};grid-row:8">${ml}</div>`;
+    if (ml) labels += `<div class="hlabel bottom" style="grid-column:${w + 1};grid-row:8">${ml}</div>`;
   }
-  // 格子逐格显式定位：第 w 周第 r 天 → 第 w+2 列第 r+1 行（修复原先 auto-flow 按行填充把日期拍平的 bug）
+  // 格子逐格显式定位：第 w 周第 r 天 → 第 w+1 列第 r+1 行（修复原先 auto-flow 按行填充把日期拍平的 bug）
   for (let w = 0; w < 53; w++) {
     for (let r = 0; r < 7; r++) {
       const d = new Date(start); d.setDate(start.getDate() + w * 7 + r);
       if (d > end) continue;
       const n = byDay.get(keyOf(d)) || 0;
       const cls = n === 0 ? '' : n <= 2 ? 'q1' : n <= 4 ? 'q2' : n <= 6 ? 'q3' : 'q4';
-      cells += `<div class="pcell ${cls}${w <= 1 ? ' tip-left' : w >= 51 ? ' tip-right' : ''}" style="grid-column:${w + 2};grid-row:${r + 1}" data-tip="${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} · 标记 ${n} 题"></div>`;
+      cells += `<div class="pcell ${cls}${w <= 3 ? ' tip-left' : w >= 49 ? ' tip-right' : ''}" style="grid-column:${w + 1};grid-row:${r + 1}" data-tip="${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} · 标记 ${n} 题"></div>`;
     }
   }
   $('#punch').innerHTML = `
-    <div class="punch-scroll"><div class="punch-grid" style="grid-template-columns:26px repeat(53, minmax(10px, 1fr));grid-template-rows:repeat(7, auto) 18px">
+    <div class="punch-scroll"><div class="punch-grid" style="grid-template-columns:repeat(53, minmax(10px, 1fr));grid-template-rows:repeat(7, auto) 18px">
       ${labels}${cells}
     </div></div>
     <div class="punch-legend">少
@@ -603,12 +601,65 @@ function renderAiMsgs() {
   }
   scrollAi();
 }
+/* ---------------- 历史对话（跨题目） ---------------- */
+function aiRelTime(ts) {
+  if (!ts) return '';
+  const d = Date.now() - ts;
+  if (d < 60e3) return '刚刚';
+  if (d < 3600e3) return Math.floor(d / 60e3) + ' 分钟前';
+  if (d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
+  if (d < 7 * 86400e3) return Math.floor(d / 86400e3) + ' 天前';
+  const dt = new Date(ts);
+  return dt.getFullYear() === new Date().getFullYear()
+    ? `${dt.getMonth() + 1}月${dt.getDate()}日`
+    : `${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`;
+}
+function renderAiHistory() {
+  const host = $('#aiHistory');
+  const items = Object.entries(store.chats || {})
+    .filter(([qid, msgs]) => QMAP.has(qid) && msgs.length)
+    .map(([qid, msgs]) => {
+      const q = QMAP.get(qid);
+      const lastUser = [...msgs].reverse().find(m => m.role === 'user') || msgs[msgs.length - 1];
+      return {
+        qid, q,
+        t: msgs.reduce((mx, m) => Math.max(mx, m.t || 0), 0),
+        preview: String(lastUser.content || '').replace(/\s+/g, ' ').slice(0, 90),
+        n: msgs.length,
+      };
+    })
+    .sort((a, b) => b.t - a.t);
+  if (!items.length) {
+    host.innerHTML = `<div class="ai-hempty">🕘 暂无历史对话<br><small>在题目里点「🤖 AI」提问后，所有对话都会保存在这里，随时回看</small></div>`;
+    return;
+  }
+  host.innerHTML = `<div class="ai-hcount">共 ${items.length} 题有对话记录 · 按最近提问排序，点击回看</div>` + items.map(it => {
+    const tag = it.q.year ? `${it.q.year}${it.q.isMock ? '（模拟）' : ''}·第${it.q.qNum}题` : (it.q.srcLabel || '课件补充');
+    return `<div class="ai-hitem" data-qid="${esc(it.qid)}" title="点击回看本题对话">
+      <div class="ai-hitem-head">
+        <span class="badge">${esc(tag)}</span>
+        <span class="t">${it.n} 条 · ${aiRelTime(it.t) || '较早'}</span>
+        <button class="ai-hdel" data-del="${esc(it.qid)}" title="删除本题对话记录">🗑</button>
+      </div>
+      <div class="ai-hitem-title">${esc(it.q.title)}</div>
+      <div class="ai-hitem-prev">${esc(it.preview) || '<i>（空）</i>'}</div>
+    </div>`;
+  }).join('');
+}
+function setAiHist(open) {
+  $('#aiHistory').hidden = !open;
+  $('#aiMsgs').style.display = open ? 'none' : '';
+  $('.ai-composer').style.display = open ? 'none' : '';
+  $('#aiHistBtn').classList.toggle('on', open);
+  if (open) renderAiHistory();
+}
 function openAIPanel(qid) {
   const q = QMAP.get(qid);
   if (!q) return;
   if (aiAbort) aiAbort.abort();
   ensureAiVendors().then(() => { if (aiQid === qid && !$('#aiPanel').hidden) renderAiMsgs(); }).catch(() => {});
   aiQid = qid;
+  setAiHist(false);
   const t = (q.year ? `${q.year}${q.isMock ? '（模拟）' : ''}·第${q.qNum}题 ` : '课件补充 · ') + q.title;
   $('#aiQTitle').textContent = t;
   $('#aiQTitle').title = t;
@@ -647,7 +698,7 @@ async function sendAi() {
 
   store.chats = store.chats || {};
   const hist = store.chats[aiQid] || (store.chats[aiQid] = []);
-  hist.push({ role: 'user', content: text });
+  hist.push({ role: 'user', content: text, t: Date.now() });
   save();
   renderAiMsgs();
   input.value = ''; input.style.height = 'auto';
@@ -742,7 +793,7 @@ async function sendAi() {
       if (full) paintAns();
     }
     bot.classList.remove('streaming');
-    if (full || rc) { hist.push({ role: 'assistant', content: full || '（无正文内容）', ...(rc ? { rc } : {}) }); save(); }
+    if (full || rc) { hist.push({ role: 'assistant', content: full || '（无正文内容）', t: Date.now(), ...(rc ? { rc } : {}) }); save(); }
     else bot.remove();
   } catch (err) {
     bot.classList.remove('streaming');
@@ -754,7 +805,7 @@ async function sendAi() {
         if (full) paintAns(); else parts.rcBody.textContent = rc;
         parts.rcDetails.open = false;
         parts.rcSummary.textContent = '💭 思考（手动停止）';
-        hist.push({ role: 'assistant', content: full || '（已停止生成）', ...(rc ? { rc } : {}) });
+        hist.push({ role: 'assistant', content: full || '（已停止生成）', t: Date.now(), ...(rc ? { rc } : {}) });
         save();
       } else bot.remove();
     } else {
@@ -786,6 +837,24 @@ $('#aiClearBtn').addEventListener('click', () => {
   delete (store.chats || {})[aiQid];
   save();
   renderAiMsgs();
+  if (!$('#aiHistory').hidden) renderAiHistory();
+});
+$('#aiHistBtn').addEventListener('click', () => setAiHist($('#aiHistory').hidden));
+$('#aiHistory').addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    const qid = del.dataset.del;
+    if (!confirm('删除本题的 AI 对话记录？')) return;
+    delete (store.chats || {})[qid];
+    save();
+    if (qid === aiQid) renderAiMsgs();
+    renderAiHistory();
+    return;
+  }
+  const item = e.target.closest('.ai-hitem');
+  if (!item || !QMAP.has(item.dataset.qid)) return;
+  goToQuestion(item.dataset.qid);   // 背景里滚动定位到该题
+  openAIPanel(item.dataset.qid);
 });
 $('#aiSaveSettings').addEventListener('click', () => {
   aiCfg.base = ($('#aiBase').value.trim() || 'https://api.deepseek.com').replace(/\/+$/, '');
@@ -799,6 +868,35 @@ $('#aiSaveSettings').addEventListener('click', () => {
 });
 $('#aiCancelSettings').addEventListener('click', () => { $('#aiSettings').hidden = true; });
 $('#aiSettings').addEventListener('click', e => { if (e.target.id === 'aiSettings') $('#aiSettings').hidden = true; });
+
+/* 面板宽度：拖左缘调节，双击恢复默认（与侧栏同一套交互） */
+const AIW_KEY = 'sign_quiz_aiw', AIW_DEF = 680;
+const aiwClamp = w => Math.min(Math.min(1280, window.innerWidth - 40), Math.max(420, w));
+const applyAiw = () => $('#aiPanel').style.setProperty('--aiw', aiw + 'px');
+let aiw = aiwClamp(+(localStorage.getItem(AIW_KEY) || AIW_DEF));
+applyAiw();
+{
+  const rz = $('#aiResizer');
+  rz.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    document.body.classList.add('resizing');
+    rz.classList.add('dragging');
+    try { rz.setPointerCapture(e.pointerId); } catch {}
+    const move = ev => { aiw = aiwClamp(window.innerWidth - ev.clientX); applyAiw(); };
+    const up = () => {
+      rz.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      localStorage.setItem(AIW_KEY, String(aiw));
+      rz.removeEventListener('pointermove', move);
+      rz.removeEventListener('pointerup', up);
+      rz.removeEventListener('pointercancel', up);
+    };
+    rz.addEventListener('pointermove', move);
+    rz.addEventListener('pointerup', up);
+    rz.addEventListener('pointercancel', up);
+  });
+  rz.addEventListener('dblclick', () => { aiw = AIW_DEF; applyAiw(); localStorage.setItem(AIW_KEY, String(AIW_DEF)); });
+}
 
 /* ---------------- 备份（含 AI 对话记录） ---------------- */
 $('#exportBtn').addEventListener('click', () => {
@@ -849,6 +947,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!$('#lightbox').hidden) { $('#lightbox').hidden = true; return; }
   if (!$('#aiSettings').hidden) { $('#aiSettings').hidden = true; return; }
+  if (!$('#aiHistory').hidden) { setAiHist(false); return; }
   if (!$('#aiPanel').hidden) $('#aiPanel').hidden = true;
 });
 
