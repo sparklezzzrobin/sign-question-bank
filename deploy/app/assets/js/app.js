@@ -180,10 +180,67 @@ function filtered() {
   return list;
 }
 
-/* ---------------- 卡片 ---------------- */
+/* ---------------- 卡片与按需公式渲染 ---------------- */
+if (window.marked) window.marked.use({ gfm: true, breaks: false });
+const TOPIC_NAME_MAP = new Map((DATA.topics || []).map(t => [t.no, t.name]));
+for (const q of Q) {
+  if (!q.topicName) q.topicName = TOPIC_NAME_MAP.get(q.topicNo) || `专题${q.topicNo}`;
+  if (!q.images) q.images = [];
+  if (!q.pdfs) q.pdfs = [];
+  if (!q.searchText) {
+    q.searchText = (q.title + '\n' + (q.solutionSource || '') + '\n' + (q.stem || '')).toLowerCase();
+  }
+}
+
+function renderLatexText(raw, useMarked) {
+  const stash = [];
+  const masked = String(raw || '')
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => (stash.push({ tex: tex.trim(), d: true }), `ZZKTXZZ${stash.length - 1}ZZKTXZZ`))
+    .replace(/\$([^$]+?)\$/g, (_, tex) => (stash.push({ tex: tex.trim(), d: false }), `ZZKTXZZ${stash.length - 1}ZZKTXZZ`));
+  const body = useMarked
+    ? (window.marked ? window.marked.parse(masked) : esc(masked))
+    : esc(masked);
+  return body.replace(/ZZKTXZZ(\d+)ZZKTXZZ/g, (_, i) => {
+    const { tex, d } = stash[+i];
+    if (!window.katex) return esc(tex);
+    try {
+      return window.katex.renderToString(tex, { displayMode: d, throwOnError: false, strict: false, output: 'html' });
+    } catch {
+      return esc(tex);
+    }
+  });
+}
+function getTitleHtml(q) {
+  if (q.titleHtml) return q.titleHtml;
+  if (q._titleHtml == null) q._titleHtml = renderLatexText(q.title, false);
+  return q._titleHtml;
+}
+function getStemHtml(q) {
+  if (q.stemHtml) return q.stemHtml;
+  if (q._stemHtml == null) q._stemHtml = renderLatexText(q.stem, true);
+  return q._stemHtml;
+}
+function getRemarkHtml(q) {
+  if (!q.remark) return '';
+  if (q.remarkHtml) return q.remarkHtml;
+  if (q._remarkHtml == null) q._remarkHtml = renderLatexText(q.remark, false);
+  return q._remarkHtml;
+}
+function getSolutionHtml(q) {
+  if (!q.solution && !q.solutionHtml) return null;
+  if (q.solutionHtml) return q.solutionHtml;
+  if (q._solHtml == null) {
+    q._solHtml = renderLatexText(q.solution, true).replace(
+      /<img([^>]*?)\ssrc="([^"]+)"/g,
+      '<img$1 loading="lazy" referrerpolicy="no-referrer" src="$2" data-act="zoom" data-src="$2"'
+    );
+  }
+  return q._solHtml;
+}
+
 function cardHTML(q) {
   const st = statusOf(q.id), fav = favOf(q.id);
-  const topicBadge = (q.year && q.group) ? `<span class="badge plain" title="来自考点 ${esc(q.group)}">${esc(q.group)}</span>` : '';
+  const topicBadge = q.group ? `<span class="badge plain" title="来自考点 ${esc(q.group)}">${esc(q.group)}</span>` : '';
   const srcBadge = q.srcLabel ? `<span class="badge">${esc(q.srcKind === 'textbook' ? q.srcLabel.replace(/^教材/, '教材（郑君里第三版）') : q.srcLabel)}</span>` : '';
   const yearBadge = q.year
     ? `<span class="badge${q.isMock ? ' mock' : ''}">${q.year}${q.isMock ? ' · 模拟' : ''} · 第 ${q.qNum} 题</span>`
@@ -191,13 +248,14 @@ function cardHTML(q) {
   const score = q.score ? `<span class="badge plain">${q.score} 分</span>` : '';
   const imgs = (q.images || []).map(im => {
     if (im.type === 'missing') return `<div class="img-missing"><b>🖼️ 原图缺失</b> · ${esc(im.note || '请对照原卷 PDF 查看')}</div>`;
-    return `<img class="thumb" loading="lazy" src="${esc(im.href)}" data-act="zoom" data-src="${esc(im.href)}" alt="题图">`;
+    return `<img class="thumb" loading="lazy" referrerpolicy="no-referrer" src="${esc(im.href)}" data-act="zoom" data-src="${esc(im.href)}" alt="题图">`;
   }).join('');
-  const sol = q.solutionHtml
+  const hasSol = Boolean(q.solution || q.solutionHtml);
+  const sol = hasSol
     ? `<details class="sol"><summary><span class="arrow">▶</span>📖 展开解析${q.solutionSource ? ` · ${esc(q.solutionSource)}` : ''}（先自己完整做一遍再看）</summary>
-         <div class="sol-body">${q.solutionHtml}</div></details>`
+         <div class="sol-body" data-sol-id="${esc(q.id)}"></div></details>`
     : `<div class="sol-none">📖 暂无解析 · 请对照答案卷 / 题库存档 PDF</div>`;
-  const remark = q.remark ? `<div class="remark">⚠️ ${q.remarkHtml || esc(q.remark)}</div>` : '';
+  const remark = q.remark ? `<div class="remark">⚠️ ${getRemarkHtml(q)}</div>` : '';
   const pdfs = (q.pdfs || []).map(p =>
     `<a class="pdf-link" href="../${esc(p.href)}" target="_blank" rel="noopener" title="打开 ${esc(p.href)}">📄 ${esc(p.label)}</a>`).join('');
   return `<article class="card ${st ? 'st-' + st : ''}" data-id="${q.id}">
@@ -207,9 +265,9 @@ function cardHTML(q) {
         <button class="fav-btn ${fav ? 'on' : ''}" data-act="fav" title="收藏" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
         <button class="ai-fab" data-act="ai" title="AI 讲解本题（已读取题干与解析）">🤖 AI</button>
       </div>
-      <h3 class="card-title">${q.titleHtml}</h3>
+      <h3 class="card-title">${getTitleHtml(q)}</h3>
     </div>
-    <div class="card-stem">${q.stemHtml}</div>
+    <div class="card-stem">${getStemHtml(q)}</div>
     ${imgs ? `<div class="card-imgs">${imgs}</div>` : ''}
     ${remark}
     ${sol}
@@ -221,14 +279,14 @@ function cardHTML(q) {
     </div>
   </article>`;
 }
-function renderCards() {
-  const list = filtered();
-  $('#cards').innerHTML = list.length
-    ? list.map(cardHTML).join('') + `<div class="end-mark">已显示全部题目</div>`
-    : `<div class="img-missing" style="margin-top:30px">没有符合筛选条件的题目 —— 试试放宽筛选。</div>`;
-  $('#countText').textContent = `显示 ${list.length} / ${Q.length} 题`;
-  // 外链图加载失败时降级为提示条（热链失效、断网等）
-  $$('#cards img.thumb').forEach(im => {
+
+const PAGE_SIZE = 30;
+let currentList = [];
+let renderedCount = 0;
+
+function bindImgFallback(root) {
+  root.querySelectorAll('img.thumb:not([data-fb])').forEach(im => {
+    im.dataset.fb = '1';
     const fail = () => {
       const div = document.createElement('div');
       div.className = 'img-missing';
@@ -240,8 +298,69 @@ function renderCards() {
   });
 }
 
+function ensureSolRendered(det) {
+  if (!det) return;
+  const body = det.querySelector('.sol-body[data-sol-id]');
+  if (!body || body.dataset.rendered) return;
+  const q = QMAP.get(body.dataset.solId);
+  if (q) {
+    body.innerHTML = getSolutionHtml(q) || '';
+    body.dataset.rendered = '1';
+  }
+}
+
+function appendMoreCards(count = PAGE_SIZE) {
+  if (renderedCount >= currentList.length) return;
+  const nextEnd = Math.min(currentList.length, renderedCount + count);
+  const slice = currentList.slice(renderedCount, nextEnd);
+  renderedCount = nextEnd;
+  const endEl = $('#cardsEnd');
+  if (!endEl) return;
+  endEl.insertAdjacentHTML('beforebegin', slice.map(cardHTML).join(''));
+  bindImgFallback($('#cards'));
+  endEl.textContent = renderedCount >= currentList.length
+    ? '已显示全部题目'
+    : `向下滚动加载更多（已加载 ${renderedCount} / ${currentList.length} 题）`;
+}
+
+let cardsObserver = null;
+function setupCardsObserver() {
+  if (cardsObserver) cardsObserver.disconnect();
+  const endEl = $('#cardsEnd');
+  if (!endEl || typeof IntersectionObserver === 'undefined') return;
+  cardsObserver = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting) && renderedCount < currentList.length) {
+      appendMoreCards(PAGE_SIZE);
+    }
+  }, { root: $('.brush-main'), rootMargin: '800px 0px' });
+  cardsObserver.observe(endEl);
+}
+
+function renderCards() {
+  currentList = filtered();
+  renderedCount = 0;
+  $('#countText').textContent = `显示 ${currentList.length} / ${Q.length} 题`;
+  if (!currentList.length) {
+    if (cardsObserver) cardsObserver.disconnect();
+    $('#cards').innerHTML = `<div class="img-missing" style="margin-top:30px">没有符合筛选条件的题目 —— 试试放宽筛选。</div>`;
+    return;
+  }
+  $('#cards').innerHTML = `<div class="end-mark" id="cardsEnd"></div>`;
+  appendMoreCards(PAGE_SIZE);
+  setupCardsObserver();
+}
+
+$('#cards').addEventListener('toggle', e => {
+  const det = e.target;
+  if (det && det.open && det.classList && det.classList.contains('sol')) {
+    ensureSolRendered(det);
+  }
+}, true);
+
 /* 卡片交互（事件委托） */
 $('#cards').addEventListener('click', e => {
+  const sum = e.target.closest('details.sol > summary');
+  if (sum) ensureSolRendered(sum.parentElement);
   const zoom = e.target.closest('[data-act="zoom"]');
   if (zoom) { openLightbox(zoom.dataset.src); return; }
   const btn = e.target.closest('[data-act]');
@@ -365,6 +484,10 @@ function goToQuestion(id) {
     ui.topic = 0; ui.group = null; ui.status = 'all'; ui.src = 'all'; ui.year = 0; ui.q = '';
     $('#searchInput').value = '';
     renderFilterBar(); renderSidebar(); renderCards();
+  }
+  const idx = currentList.findIndex(x => x.id === id);
+  if (idx >= renderedCount) {
+    appendMoreCards(idx - renderedCount + 10);
   }
   const card = $(`.card[data-id="${CSS.escape(id)}"]`);
   if (card) {
@@ -939,7 +1062,9 @@ $('#clearBtn').addEventListener('click', () => {
 
 /* ---------------- lightbox / toast / 主题 ---------------- */
 function openLightbox(src) {
-  $('#lightboxImg').src = src;
+  const img = $('#lightboxImg');
+  img.referrerPolicy = 'no-referrer';
+  img.src = src;
   $('#lightbox').hidden = false;
 }
 $('#lightbox').addEventListener('click', () => { $('#lightbox').hidden = true; });

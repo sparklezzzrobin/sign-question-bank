@@ -591,17 +591,43 @@ function main() {
     seen.set(q.id, q.section);
   }
 
-  // 输出（专题列表只保留实际有题的）
+  // 输出（专题列表只保留实际有题的；仅输出精简原始字段，HTML/KaTeX 由前端按需懒渲染以将体积从 38MB 降至 1.2MB）
   const usedTopics = new Set(all.map(q => q.topicNo));
   mkdirSync(OUT, { recursive: true });
+  const compactQuestions = all.map(q => {
+    const o = { id: q.id, topicNo: q.topicNo, srcKind: q.srcKind };
+    if (q.srcLabel) o.srcLabel = q.srcLabel;
+    if (q.section) o.section = q.section;
+    if (q.sectionTitle) o.sectionTitle = q.sectionTitle;
+    if (q.group) o.group = q.group;
+    if (q.groupTitle) o.groupTitle = q.groupTitle;
+    if (q.subCode) o.subCode = q.subCode;
+    if (q.year) o.year = q.year;
+    if (q.isMock) o.isMock = q.isMock;
+    if (q.qNum) o.qNum = q.qNum;
+    if (q.score) o.score = q.score;
+    o.title = q.title;
+    o.stem = q.stem;
+    if (q.solution) o.solution = q.solution;
+    if (q.solutionSource) o.solutionSource = q.solutionSource;
+    if (q.images && q.images.length) o.images = q.images;
+    if (q.pdfs && q.pdfs.length) o.pdfs = q.pdfs;
+    if (q.remark) o.remark = q.remark;
+    return o;
+  });
   const payload = {
     builtAt: new Date().toISOString(),
     topics: TOPICS.filter(t => usedTopics.has(t.no)).map(({ no, name }) => ({ no, name })),
-    questions: all,
+    questions: compactQuestions,
   };
-  writeFileSync(path.join(OUT, 'questions.js'),
+  const outContent =
     '/* 本文件由 app/tools/build-data.mjs 生成，请勿手改；修改题库后重新构建 */\n' +
-    `window.QUESTION_DATA = ${JSON.stringify(payload)};\n`, 'utf8');
+    `window.QUESTION_DATA = ${JSON.stringify(payload)};\n`;
+  writeFileSync(path.join(OUT, 'questions.js'), outContent, 'utf8');
+  const deployOut = path.join(ROOT, 'deploy', 'app', 'data');
+  if (existsSync(deployOut)) {
+    writeFileSync(path.join(deployOut, 'questions.js'), outContent, 'utf8');
+  }
 
   // KaTeX CSS + 字体 + 运行时 JS（AI 对话渲染需要）、marked UMD
   const KD = path.join(HERE, 'node_modules', 'katex', 'dist');
